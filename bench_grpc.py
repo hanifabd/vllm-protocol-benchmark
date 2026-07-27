@@ -2,6 +2,30 @@
 Benchmark vLLM's gRPC serving endpoint (vllm serve --grpc), added in recent
 vLLM releases and backed by the external `smg-grpc-servicer` / proto stubs
 in `smg-grpc-proto`.
+
+*** RUN discover_grpc_schema.py FIRST ***
+That script prints the exact service name, RPC method name, and message
+field names for whatever version of smg-grpc-proto you have installed --
+this package is still evolving, so don't trust field names from memory or
+from any pasted snippet (including this one) without checking against your
+installed version first.
+
+There are 3 TODOs below to fill in using that printout. Everything else
+(workload generation, concurrency sweep, metrics, output format) already
+mirrors bench_rest.py exactly, so results are directly comparable.
+
+Start the server first (separate terminal):
+
+    vllm serve Qwen/Qwen2.5-0.5B-Instruct \
+        --grpc \
+        --host 0.0.0.0 --port 8001 \
+        --gpu-memory-utilization 0.85 \
+        --max-model-len 4096
+
+Then run:
+
+    python bench_grpc.py --target localhost:8001 \
+        --num-requests 100 --concurrency 10 --prompt-tokens 128 --max-tokens 128
 """
 from __future__ import annotations
 
@@ -21,68 +45,59 @@ from common import (
     summarize,
 )
 
-# TODO (1) Resolved: Imports matching discover_grpc_schema.py
+# TODO (1): confirm these imports/names match discover_grpc_schema.py output
 from smg_grpc_proto import vllm_engine_pb2, vllm_engine_pb2_grpc
 
 
 async def send_one_request(
-    stub: vllm_engine_pb2_grpc.VllmEngineStub,
+    stub,
     req: WorkloadRequest,
     model: str,
     timeout_s: float,
 ) -> RequestResult:
     result = RequestResult(request_id=req.request_id, success=False)
 
-    # TODO (2) Resolved: Build SamplingParams & GenerateRequest matching schema
-    sampling_params = vllm_engine_pb2.SamplingParams(
+    # TODO (2): build the request message using the real field names, e.g.:
+    #   request = vllm_engine_pb2.GenerateRequest(
+    #       model=model,
+    #       prompt=req.prompt,
+    #       max_tokens=req.max_tokens,
+    #       temperature=0.0,
+    #   )
+    request = vllm_engine_pb2.GenerateRequest(  # <-- verify class name
+        model=model,
+        prompt=req.prompt,
         max_tokens=req.max_tokens,
         temperature=0.0,
-    )
-
-    request = vllm_engine_pb2.GenerateRequest(
-        request_id=req.request_id,
-        text=req.prompt,
-        sampling_params=sampling_params,
-        stream=True,
     )
 
     first_token_time = None
     last_token_time = None
     output_tokens = 0
-    prompt_tokens = len(req.prompt.split())  # fallback if not returned in response
+    prompt_tokens = len(req.prompt.split())  # fallback if usage isn't in the stream
 
     result.start_time = time.perf_counter()
     try:
-        # TODO (3) Resolved: RPC method `Generate` and `GenerateResponse` stream field extraction
-        call = stub.Generate(request, timeout=timeout_s)
-        async for response in call:
+        # TODO (3): confirm the RPC method name (e.g. stub.Generate) and how
+        # to pull generated text / token counts off each streamed chunk.
+        call = stub.Generate(request, timeout=timeout_s)  # <-- verify method name
+        async for chunk in call:
             now = time.perf_counter()
 
-            # Handle streaming chunks
-            if response.HasField("chunk"):
-                chunk = response.chunk
-                
-                # Each chunk delivers new token ID(s)
-                num_new_tokens = len(chunk.token_ids)
-                if num_new_tokens > 0:
-                    if first_token_time is None:
-                        first_token_time = now
-                    else:
-                        result.inter_token_latencies_s.append(now - last_token_time)
-                    
-                    last_token_time = now
-                    output_tokens += num_new_tokens
+            # Adjust field access below to match the real response message,
+            # e.g. chunk.text, chunk.token, chunk.delta.content, etc.
+            text_piece = getattr(chunk, "text", "") or getattr(chunk, "token", "")
 
-                if chunk.prompt_tokens:
-                    prompt_tokens = chunk.prompt_tokens
+            if text_piece:
+                if first_token_time is None:
+                    first_token_time = now
+                else:
+                    result.inter_token_latencies_s.append(now - last_token_time)
+                last_token_time = now
+                output_tokens += 1
 
-            # Handle completion signal if present
-            elif response.HasField("complete"):
-                complete = response.complete
-                if complete.prompt_tokens:
-                    prompt_tokens = complete.prompt_tokens
-                if complete.completion_tokens:
-                    output_tokens = complete.completion_tokens
+            if hasattr(chunk, "prompt_tokens") and chunk.prompt_tokens:
+                prompt_tokens = chunk.prompt_tokens
 
         result.end_time = time.perf_counter()
         if first_token_time is None:
@@ -120,8 +135,8 @@ async def run_benchmark(
             ("grpc.max_receive_message_length", 64 * 1024 * 1024),
         ],
     ) as channel:
-        # Resolved: Correct stub name `VllmEngineStub`
-        stub = vllm_engine_pb2_grpc.VllmEngineStub(channel)
+        # TODO: confirm stub class name from discover_grpc_schema.py
+        stub = vllm_engine_pb2_grpc.VLLMEngineStub(channel)  # <-- verify class name
 
         async def bound_send(req: WorkloadRequest):
             async with sem:
