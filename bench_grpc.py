@@ -136,7 +136,7 @@ async def run_benchmark(
         ],
     ) as channel:
         # TODO: confirm stub class name from discover_grpc_schema.py
-        stub = vllm_engine_pb2_grpc.VLLMEngineStub(channel)  # <-- verify class name
+        stub = vllm_engine_pb2_grpc.VllmEngineStub(channel)  # <-- verify class name
 
         async def bound_send(req: WorkloadRequest):
             async with sem:
