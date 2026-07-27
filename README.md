@@ -68,7 +68,7 @@ python bench_rest.py --base-url http://localhost:8000 \
     --output results/rest_results.json
 
 # gRPC (after filling in the TODOs)
-python bench_grpc.py --target localhost:8001 \
+python bench_grpc.py --target localhost:8010 \
     --num-requests 100 \
     --concurrency 1 5 10 25 50 \
     --prompt-tokens 128 --max-tokens 128 \
