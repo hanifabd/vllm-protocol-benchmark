@@ -37,7 +37,7 @@ CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-0.5B-Instruct \
 ```bash
 CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-0.5B-Instruct \
     --grpc \
-    --host 0.0.0.0 --port 8001 \
+    --host 0.0.0.0 --port 8010 \
     --gpu-memory-utilization 0.85 \
     --max-model-len 4096
 ```
