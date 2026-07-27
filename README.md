@@ -61,7 +61,7 @@ pip install -r requirements.txt
 
 ```text
 vllm-benchmark/
-├── benchmark_single.py    # Async benchmarking harness
+├── benchmark.py    # Async benchmarking harness
 ├── requirements.txt       # Project dependencies
 └── README.md              # Documentation and execution guide
 
