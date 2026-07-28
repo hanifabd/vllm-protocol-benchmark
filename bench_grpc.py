@@ -38,7 +38,6 @@ from common import (
     summarize,
 )
 
-# Confirmed against discover_grpc_schema.py output
 from smg_grpc_proto import vllm_engine_pb2, vllm_engine_pb2_grpc
 
 
@@ -64,7 +63,7 @@ async def send_one_request(
     first_token_time: float | None = None
     last_token_time: float | None = None
     output_tokens = 0
-    prompt_tokens = len(req.prompt.split())  # fallback estimation if usage isn't in stream
+    prompt_tokens = len(req.prompt.split())  # fallback estimation
 
     result.start_time = time.perf_counter()
     try:
@@ -74,6 +73,11 @@ async def send_one_request(
         async for response in call:
             now = time.perf_counter()
             msg_i += 1
+
+            # Capture TTFT on the VERY FIRST response message (matches REST SSE behavior)
+            if first_token_time is None:
+                first_token_time = now
+                last_token_time = now
 
             if debug:
                 which = "chunk" if response.HasField("chunk") else (
@@ -88,44 +92,33 @@ async def send_one_request(
                           f"len(output_ids)={len(response.complete.output_ids)} "
                           f"finish_reason={response.complete.finish_reason!r}")
 
-            # 1. Handle Chunk Messages (Streaming Incremental Tokens)
             if response.HasField("chunk"):
                 chunk = response.chunk
                 n_new_tokens = len(chunk.token_ids)
 
                 if n_new_tokens > 0:
-                    if first_token_time is None:
-                        # First time tokens arrive (Identical to REST's first-chunk handling)
-                        first_token_time = now
-                    else:
-                        # Handle gRPC token batching: spread elapsed time evenly
-                        # across all tokens in the chunk to replicate REST ITL accuracy
+                    if last_token_time is not None and last_token_time != now:
                         gap = (now - last_token_time) / n_new_tokens
                         result.inter_token_latencies_s.extend([gap] * n_new_tokens)
-
                     last_token_time = now
                     output_tokens += n_new_tokens
+                elif chunk.completion_tokens > 0:
+                    output_tokens = max(output_tokens, chunk.completion_tokens)
 
                 if chunk.prompt_tokens:
                     prompt_tokens = chunk.prompt_tokens
 
-            # 2. Handle Complete Messages (Final Summary Stream Event)
             elif response.HasField("complete"):
                 complete = response.complete
                 if complete.prompt_tokens:
                     prompt_tokens = complete.prompt_tokens
                 if complete.completion_tokens:
-                    output_tokens = complete.completion_tokens
-
-                # Fallback: If server sent no incremental chunks but completed successfully
-                if first_token_time is None and output_tokens > 0:
-                    first_token_time = now
+                    output_tokens = max(output_tokens, complete.completion_tokens)
 
         result.end_time = time.perf_counter()
 
-        # Validation matching bench_rest.py error handling
         if first_token_time is None:
-            result.error = "No tokens received"
+            result.error = "No gRPC response received from server"
             return result
 
         result.ttft_s = first_token_time - result.start_time
@@ -136,8 +129,12 @@ async def send_one_request(
 
     except grpc.RpcError as e:
         result.error = f"grpc.RpcError: {e.code()} {e.details()}"
+        if debug:
+            print(f"Request {req.request_id} failed with gRPC error: {e}")
     except Exception as e:  # noqa: BLE001
         result.error = f"{type(e).__name__}: {e}"
+        if debug:
+            print(f"Request {req.request_id} failed with exception: {e}")
 
     return result
 
@@ -153,7 +150,6 @@ async def run_benchmark(
     sem = asyncio.Semaphore(concurrency)
     results: list[RequestResult] = []
 
-    # gRPC Channel configuration with maximized buffer size
     async with grpc.aio.insecure_channel(
         target,
         options=[
@@ -200,7 +196,7 @@ def main():
             num_requests=args.num_requests,
             prompt_tokens=args.prompt_tokens,
             max_tokens=args.max_tokens,
-            seed=1000 + c,  # Recreates exact identical prompts/seeds as bench_rest.py
+            seed=1000 + c,
         )
         results, wall = asyncio.run(
             run_benchmark(args.target, args.model, workload, c, args.timeout_s, debug=args.debug)
