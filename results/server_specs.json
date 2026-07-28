@@ -1,0 +1,66 @@
+{
+  "os": {
+    "system": "Linux",
+    "release": "6.8.0-107-generic",
+    "version": "#107~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Wed Mar 18 23:40:43 UTC ",
+    "hostname": "eb5032987304",
+    "python_version": "3.14.6"
+  },
+  "cpu": {
+    "model": "AMD Ryzen 9 7950X 16-Core Processor",
+    "architecture": "x86_64",
+    "logical_cores": 32,
+    "physical_cores": 16
+  },
+  "memory": {
+    "total_gb": 124.91
+  },
+  "gpu": {
+    "available": true,
+    "count": 1,
+    "cuda_driver_max_version": "13.0",
+    "nvcc_toolkit_version": "12.8",
+    "gpus": [
+      {
+        "index": "0",
+        "name": "NVIDIA GeForce RTX 4090",
+        "uuid": "GPU-342e702b-1bb8-fdbf-cf79-a03d57a59072",
+        "driver_version": "580.126.20",
+        "memory.total": 24564,
+        "memory.used": 21970,
+        "memory.free": 2112,
+        "utilization.gpu": 0,
+        "utilization.memory": 0,
+        "temperature.gpu": 33,
+        "power.draw": 15.98,
+        "power.limit": 450.0,
+        "clocks.sm": 210,
+        "clocks.max.sm": 3105,
+        "pcie.link.gen.current": 1,
+        "pcie.link.width.current": 8,
+        "compute_cap": "8.9"
+      }
+    ],
+    "torch": {
+      "torch_version": "2.11.0+cu130",
+      "torch_cuda_version": "13.0",
+      "cuda_available": true,
+      "devices": [
+        {
+          "index": 0,
+          "name": "NVIDIA GeForce RTX 4090",
+          "total_memory_gb": 23.52,
+          "compute_capability": "8.9",
+          "multi_processor_count": 128
+        }
+      ]
+    }
+  },
+  "packages": {
+    "vllm": "0.26.0",
+    "torch": "2.11.0+cu130",
+    "aiohttp": "3.14.3",
+    "grpc": "1.83.0",
+    "smg_grpc_proto": "0.4.14"
+  }
+}
