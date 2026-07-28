@@ -5,14 +5,7 @@ in `smg-grpc-proto`.
 
 *** RUN discover_grpc_schema.py FIRST ***
 That script prints the exact service name, RPC method name, and message
-field names for whatever version of smg-grpc-proto you have installed --
-this package is still evolving, so don't trust field names from memory or
-from any pasted snippet (including this one) without checking against your
-installed version first.
-
-There are 3 TODOs below to fill in using that printout. Everything else
-(workload generation, concurrency sweep, metrics, output format) already
-mirrors bench_rest.py exactly, so results are directly comparable.
+field names for whatever version of smg-grpc-proto you have installed.
 
 Start the server first (separate terminal):
 
@@ -45,8 +38,7 @@ from common import (
     summarize,
 )
 
-# Confirmed against discover_grpc_schema.py output: proto module name and
-# package (vllm.grpc.engine) match.
+# Confirmed against discover_grpc_schema.py output
 from smg_grpc_proto import vllm_engine_pb2, vllm_engine_pb2_grpc
 
 
@@ -59,9 +51,6 @@ async def send_one_request(
 ) -> RequestResult:
     result = RequestResult(request_id=req.request_id, success=False)
 
-    # GenerateRequest has no `model` field (the server is bound to a single
-    # model at startup) -- prompt text goes in `text`, and sampling knobs
-    # live in a nested SamplingParams message.
     request = vllm_engine_pb2.GenerateRequest(
         request_id=str(req.request_id),
         text=req.prompt,
@@ -72,18 +61,20 @@ async def send_one_request(
         stream=True,
     )
 
-    first_token_time = None
-    last_token_time = None
+    first_token_time: float | None = None
+    last_token_time: float | None = None
     output_tokens = 0
-    prompt_tokens = len(req.prompt.split())  # fallback if usage isn't in the stream
+    prompt_tokens = len(req.prompt.split())  # fallback estimation if usage isn't in stream
 
     result.start_time = time.perf_counter()
     try:
         msg_i = 0
         call = stub.Generate(request, timeout=timeout_s)
+
         async for response in call:
             now = time.perf_counter()
             msg_i += 1
+
             if debug:
                 which = "chunk" if response.HasField("chunk") else (
                     "complete" if response.HasField("complete") else "UNKNOWN")
@@ -96,50 +87,43 @@ async def send_one_request(
                           f"completion_tokens={response.complete.completion_tokens} "
                           f"len(output_ids)={len(response.complete.output_ids)} "
                           f"finish_reason={response.complete.finish_reason!r}")
-                else:
-                    print(f"  [msg {msg_i}] neither chunk nor complete set!")
 
-            # GenerateResponse wraps either an incremental `chunk` (raw
-            # token_ids, no decoded text -- fine for benchmarking since we
-            # only need counts/timing, not the text itself) or a final
-            # `complete` summary sent once at the end of the stream.
+            # 1. Handle Chunk Messages (Streaming Incremental Tokens)
             if response.HasField("chunk"):
                 chunk = response.chunk
                 n_new_tokens = len(chunk.token_ids)
-                if n_new_tokens:
+
+                if n_new_tokens > 0:
                     if first_token_time is None:
-                        # First chunk ever: we only have one timestamp (`now`)
-                        # for however many tokens arrived together, so there's
-                        # no measurable gap *within* this batch -- record the
-                        # arrival time and leave inter-token gaps for later
-                        # chunks, same as bench_rest.py's first-SSE-event case.
+                        # First time tokens arrive (Identical to REST's first-chunk handling)
                         first_token_time = now
                     else:
-                        # REST measures one real timestamp per token because
-                        # each SSE event is one token. gRPC can batch several
-                        # token_ids into a single message, so instead of
-                        # stamping every token in the batch with the same
-                        # `now` (which would fabricate near-zero ITLs and
-                        # skew gRPC's stats favorably vs. REST), spread the
-                        # elapsed time evenly across the batch.
+                        # Handle gRPC token batching: spread elapsed time evenly
+                        # across all tokens in the chunk to replicate REST ITL accuracy
                         gap = (now - last_token_time) / n_new_tokens
                         result.inter_token_latencies_s.extend([gap] * n_new_tokens)
+
                     last_token_time = now
                     output_tokens += n_new_tokens
 
                 if chunk.prompt_tokens:
                     prompt_tokens = chunk.prompt_tokens
 
+            # 2. Handle Complete Messages (Final Summary Stream Event)
             elif response.HasField("complete"):
                 complete = response.complete
-                # Authoritative final counts -- prefer these over the
-                # running tally accumulated from `chunk` messages.
                 if complete.prompt_tokens:
                     prompt_tokens = complete.prompt_tokens
                 if complete.completion_tokens:
                     output_tokens = complete.completion_tokens
 
+                # Fallback: If server sent no incremental chunks but completed successfully
+                if first_token_time is None and output_tokens > 0:
+                    first_token_time = now
+
         result.end_time = time.perf_counter()
+
+        # Validation matching bench_rest.py error handling
         if first_token_time is None:
             result.error = "No tokens received"
             return result
@@ -169,6 +153,7 @@ async def run_benchmark(
     sem = asyncio.Semaphore(concurrency)
     results: list[RequestResult] = []
 
+    # gRPC Channel configuration with maximized buffer size
     async with grpc.aio.insecure_channel(
         target,
         options=[
@@ -205,7 +190,7 @@ def main():
     ap.add_argument("--timeout-s", type=float, default=120.0)
     ap.add_argument("--output", default="results/grpc_results.json")
     ap.add_argument("--debug", action="store_true",
-                     help="dump raw per-message field values for request_id=0 in each concurrency level")
+                    help="dump raw per-message field values for request_id=0 in each concurrency level")
     args = ap.parse_args()
 
     all_summaries = []
@@ -215,7 +200,7 @@ def main():
             num_requests=args.num_requests,
             prompt_tokens=args.prompt_tokens,
             max_tokens=args.max_tokens,
-            seed=1000 + c,  # same seed scheme as bench_rest.py -> same prompts
+            seed=1000 + c,  # Recreates exact identical prompts/seeds as bench_rest.py
         )
         results, wall = asyncio.run(
             run_benchmark(args.target, args.model, workload, c, args.timeout_s, debug=args.debug)
