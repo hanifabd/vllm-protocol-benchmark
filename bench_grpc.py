@@ -55,6 +55,7 @@ async def send_one_request(
     req: WorkloadRequest,
     model: str,
     timeout_s: float,
+    debug: bool = False,
 ) -> RequestResult:
     result = RequestResult(request_id=req.request_id, success=False)
 
@@ -78,9 +79,25 @@ async def send_one_request(
 
     result.start_time = time.perf_counter()
     try:
+        msg_i = 0
         call = stub.Generate(request, timeout=timeout_s)
         async for response in call:
             now = time.perf_counter()
+            msg_i += 1
+            if debug:
+                which = "chunk" if response.HasField("chunk") else (
+                    "complete" if response.HasField("complete") else "UNKNOWN")
+                if which == "chunk":
+                    print(f"  [msg {msg_i}] chunk: len(token_ids)={len(response.chunk.token_ids)} "
+                          f"prompt_tokens={response.chunk.prompt_tokens} "
+                          f"completion_tokens={response.chunk.completion_tokens}")
+                elif which == "complete":
+                    print(f"  [msg {msg_i}] complete: prompt_tokens={response.complete.prompt_tokens} "
+                          f"completion_tokens={response.complete.completion_tokens} "
+                          f"len(output_ids)={len(response.complete.output_ids)} "
+                          f"finish_reason={response.complete.finish_reason!r}")
+                else:
+                    print(f"  [msg {msg_i}] neither chunk nor complete set!")
 
             # GenerateResponse wraps either an incremental `chunk` (raw
             # token_ids, no decoded text -- fine for benchmarking since we
@@ -147,6 +164,7 @@ async def run_benchmark(
     workload: list[WorkloadRequest],
     concurrency: int,
     timeout_s: float,
+    debug: bool = False,
 ) -> tuple[list[RequestResult], float]:
     sem = asyncio.Semaphore(concurrency)
     results: list[RequestResult] = []
@@ -162,7 +180,10 @@ async def run_benchmark(
 
         async def bound_send(req: WorkloadRequest):
             async with sem:
-                return await send_one_request(stub, req, model, timeout_s)
+                is_first = debug and req.request_id == 0
+                if is_first:
+                    print(f"\n--- debug: request_id=0 (prompt_tokens={req.max_tokens} max_tokens) ---")
+                return await send_one_request(stub, req, model, timeout_s, debug=is_first)
 
         start = time.perf_counter()
         tasks = [asyncio.create_task(bound_send(r)) for r in workload]
@@ -183,6 +204,8 @@ def main():
     ap.add_argument("--max-tokens", type=int, default=128)
     ap.add_argument("--timeout-s", type=float, default=120.0)
     ap.add_argument("--output", default="results/grpc_results.json")
+    ap.add_argument("--debug", action="store_true",
+                     help="dump raw per-message field values for request_id=0 in each concurrency level")
     args = ap.parse_args()
 
     all_summaries = []
@@ -195,7 +218,7 @@ def main():
             seed=1000 + c,  # same seed scheme as bench_rest.py -> same prompts
         )
         results, wall = asyncio.run(
-            run_benchmark(args.target, args.model, workload, c, args.timeout_s)
+            run_benchmark(args.target, args.model, workload, c, args.timeout_s, debug=args.debug)
         )
         summary = summarize(results, wall, protocol="grpc", concurrency=c)
         print(json.dumps(summary, indent=2))
