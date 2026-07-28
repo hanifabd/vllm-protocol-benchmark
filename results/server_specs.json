@@ -1,19 +1,19 @@
 {
   "os": {
     "system": "Linux",
-    "release": "6.8.0-107-generic",
-    "version": "#107~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Wed Mar 18 23:40:43 UTC ",
-    "hostname": "eb5032987304",
+    "release": "6.8.0-117-generic",
+    "version": "#117~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu May  7 22:17:46 UTC ",
+    "hostname": "1163492e44ba",
     "python_version": "3.14.6"
   },
   "cpu": {
-    "model": "AMD Ryzen 9 7950X 16-Core Processor",
+    "model": "AMD EPYC 7352 24-Core Processor",
     "architecture": "x86_64",
-    "logical_cores": 32,
-    "physical_cores": 16
+    "logical_cores": 48,
+    "physical_cores": 24
   },
   "memory": {
-    "total_gb": 124.91
+    "total_gb": 251.55
   },
   "gpu": {
     "available": true,
@@ -24,20 +24,20 @@
       {
         "index": "0",
         "name": "NVIDIA GeForce RTX 4090",
-        "uuid": "GPU-342e702b-1bb8-fdbf-cf79-a03d57a59072",
-        "driver_version": "580.126.20",
+        "uuid": "GPU-68e52f89-4b40-c816-37b7-56db03637e30",
+        "driver_version": "580.159.04",
         "memory.total": 24564,
-        "memory.used": 21970,
-        "memory.free": 2112,
-        "utilization.gpu": 0,
-        "utilization.memory": 0,
+        "memory.used": 21458,
+        "memory.free": 2624,
+        "utilization.gpu": 8,
+        "utilization.memory": 4,
         "temperature.gpu": 33,
-        "power.draw": 15.98,
+        "power.draw": 72.99,
         "power.limit": 450.0,
-        "clocks.sm": 210,
-        "clocks.max.sm": 3105,
-        "pcie.link.gen.current": 1,
-        "pcie.link.width.current": 8,
+        "clocks.sm": 2550,
+        "clocks.max.sm": 3135,
+        "pcie.link.gen.current": 4,
+        "pcie.link.width.current": 16,
         "compute_cap": "8.9"
       }
     ],
