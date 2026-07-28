@@ -1,194 +1,69 @@
 ### Executive Summary: vLLM Serve Protocol Comparison (gRPC vs. REST API)
 
-This analysis evaluates performance data comparing **gRPC** and **REST API** protocols for `vllm serve` across concurrency levels ranging from **1 to 50** concurrent requests (with 100 successful requests per test run and 0 failures).
+This evaluation compares **gRPC** and **REST API** performance for `vllm serve` across workloads ranging from **1 to 50** concurrent requests (100 total requests per test, 100% success rate).
 
 ---
 
-### Key Findings
+### Key Takeaways & Performance Insights
 
-1. **gRPC Outperforms REST Significantly under High Concurrency:**
-* **Throughput:** At low concurrency ($C=1$), both protocols perform virtually identically (**$0.36\%$** gain for gRPC). However, as concurrency scales to $50$, **gRPC achieves $15.70\%$ higher request throughput** ($147.06$ req/s vs. $127.10$ req/s) and **$24.02\%$ higher token throughput** ($18,823.32$ vs. $15,177.15$ output tokens/s).
-* **Time-to-First-Token (TTFT):** gRPC significantly reduces response initiation latency as concurrent load grows. At $C=50$, gRPC delivers a **$43.59\%$ faster mean TTFT** ($53.13\text{ ms}$ vs. $94.19\text{ ms}$) and a **$37.58\%$ faster P99 TTFT** ($79.63\text{ ms}$ vs. $127.57\text{ ms}$).
-* **End-to-End (E2E) Latency:** At maximum load ($C=50$), gRPC delivers a **$13.13\%$ faster mean total response time** ($338.27\text{ ms}$ vs. $389.41\text{ ms}$) and a **$15.61\%$ faster P99 E2E time** ($354.74\text{ ms}$ vs. $420.34\text{ ms}$).
+1. **Protocols Perform Identically at Low Load ($C=1$):**
+* At single-request concurrency, performance differences are negligible ($0.83\text{ ms}$ lower end-to-end latency for gRPC and $<0.02\text{ req/s}$ difference in throughput). Either protocol works equally well for light workloads.
 
 
-2. **Per-Token Generation Latency (TPOT & ITL) remains Stable:**
-* Both protocols exhibit nearly identical Time-Per-Output-Token (TPOT) and Inter-Token Latency (ITL) values across all concurrency levels (e.g., $\sim 2.25\text{ ms}$ for gRPC vs. $\sim 2.49\text{ ms}$ for REST at $C=50$). The throughput advantage of gRPC stems primarily from lower connection handling overhead during initial request establishment rather than token generation speed itself.
+2. **gRPC Handles High Concurrency Significantly Better ($C=50$):**
+* **Faster First Token (TTFT):** At 50 concurrent requests, gRPC starts returning tokens **$41.06\text{ ms}$ faster on average** (a $43.59\%$ latency reduction from $94.19\text{ ms}$ down to $53.13\text{ ms}$).
+* **Faster Completion (End-to-End Latency):** Full request completion is **$51.14\text{ ms}$ faster on average** under gRPC ($338.27\text{ ms}$ vs. $389.41\text{ ms}$, representing a $13.13\%$ speedup).
+* **Higher Capacity (Throughput):** gRPC processes **$19.96$ more requests per second** ($147.06\text{ req/s}$ vs. $127.10\text{ req/s}$, a $15.70\%$ improvement) and generates **$3,646$ more tokens per second**.
 
 
-
----
-
-### Test Environment & Server Specifications
-
-The benchmark execution was conducted under the following hardware and environment setup:
-
-* **CPU:** AMD EPYC 7352 24-Core Processor (24 physical cores, 48 logical threads).
-
-
-* **GPU:** 1x NVIDIA GeForce RTX 4090 (24 GB VRAM, Compute Capability 8.9).
-
-
-* **System Memory:** 251.55 GB RAM.
-
-
-* **Operating System:** Linux (Ubuntu 22.04 LTS, Kernel 6.8.0-117-generic).
-
-
-* **Driver & CUDA:** NVIDIA Driver 580.159.04, CUDA Driver max 13.0, NVCC Toolkit 12.8.
-
-
-* **Software Stack:**
-* **vLLM Version:** 0.26.0
-
-
-* **PyTorch Version:** 2.11.0+cu130
-
-
-* **gRPC Library Version:** 1.83.0
-
-
-* **Python Version:** 3.14.6
-
-
+3. **Token Generation Speed Remains Unchanged:**
+* Time-per-output-token (TPOT) is virtually identical across both protocols ($\sim 2.25\text{ ms}$ for gRPC vs. $\sim 2.49\text{ ms}$ for REST at $C=50$). This confirms that gRPC’s performance advantage comes from lower network and connection overhead, not faster GPU generation.
 
 
 
 ---
 
-### Key Performance Comparison Table (with gRPC Improvements)
+### Test Environment & Hardware Specifications
 
-| Concurrency | Protocol | Req Throughput (req/s) | Output Tok Throughput (tok/s) | Mean TTFT (ms) | P99 TTFT (ms) | Mean E2E Latency (ms) |
-| --- | --- | --- | --- | --- | --- | --- |
-| **1** | **gRPC** <br>
+The benchmark was executed using the following hardware and software setup:
 
-<br> **REST** <br>
+* **LLM Model:** Qwen/Qwen2.5-0.5B-Instruct
 
-<br> *(gRPC Gain)* | **4.28** <br>
+* **GPU:** 1x NVIDIA GeForce RTX 4090 (24 GB VRAM)
 
-<br> 4.26 <br>
 
-<br> *(+0.36%)* | **547.76** <br>
+* **CPU:** AMD EPYC 7352 24-Core Processor (48 threads)
 
-<br> 545.61 <br>
 
-<br> *(+0.40%)* | **12.22** <br>
+* **System Memory:** 251.55 GB RAM
 
-<br> 12.57 <br>
 
-<br> *(2.78% faster)* | **15.40** <br>
+* **OS & CUDA:** Linux (Ubuntu 22.04 LTS), NVIDIA Driver 580.159.04, CUDA 13.0
 
-<br> 15.31 <br>
 
-<br> *(-0.56%)* | **233.61** <br>
+* **Software Stack:** vLLM `0.26.0`, PyTorch `2.11.0+cu130`, gRPC `1.83.0`, Python `3.14.6`
 
-<br> 234.44 <br>
-
-<br> *(0.36% faster)* |
-| **5** | **gRPC** <br>
-
-<br> **REST** <br>
-
-<br> *(gRPC Gain)* | **18.53** <br>
-
-<br> 17.87 <br>
-
-<br> *(+3.67%)* | **2,371.87** <br>
-
-<br> 2,287.46 <br>
-
-<br> *(+3.69%)* | **19.41** <br>
-
-<br> 27.58 <br>
-
-<br> *(29.62% faster)* | **25.01** <br>
-
-<br> 35.77 <br>
-
-<br> *(30.08% faster)* | **269.59** <br>
-
-<br> 279.38 <br>
-
-<br> *(3.50% faster)* |
-| **10** | **gRPC** <br>
-
-<br> **REST** <br>
-
-<br> *(gRPC Gain)* | **35.83** <br>
-
-<br> 34.55 <br>
-
-<br> *(+3.71%)* | **4,586.03** <br>
-
-<br> 4,421.81 <br>
-
-<br> *(+3.71%)* | **25.88** <br>
-
-<br> 34.67 <br>
-
-<br> *(25.34% faster)* | **36.05** <br>
-
-<br> 45.05 <br>
-
-<br> *(19.98% faster)* | **278.61** <br>
-
-<br> 288.82 <br>
-
-<br> *(3.53% faster)* |
-| **25** | **gRPC** <br>
-
-<br> **REST** <br>
-
-<br> *(gRPC Gain)* | **82.62** <br>
-
-<br> 75.09 <br>
-
-<br> *(+10.03%)* | **10,575.25** <br>
-
-<br> 9,611.59 <br>
-
-<br> *(+10.03%)* | **35.02** <br>
-
-<br> 59.34 <br>
-
-<br> *(41.00% faster)* | **64.48** <br>
-
-<br> 85.16 <br>
-
-<br> *(24.28% faster)* | **301.48** <br>
-
-<br> 330.93 <br>
-
-<br> *(8.90% faster)* |
-| **50** | **gRPC** <br>
-
-<br> **REST** <br>
-
-<br> *(gRPC Gain)* | **147.06** <br>
-
-<br> 127.10 <br>
-
-<br> *(+15.70%)* | **18,823.32** <br>
-
-<br> 15,177.15 <br>
-
-<br> *(+24.02%)* | **53.13** <br>
-
-<br> 94.19 <br>
-
-<br> *(43.59% faster)* | **79.63** <br>
-
-<br> 127.57 <br>
-
-<br> *(37.58% faster)* | **338.27** <br>
-
-<br> 389.41 <br>
-
-<br> *(13.13% faster)* |
 
 ---
 
-### Strategic Recommendation
+### Complete Metric Breakdown
 
-* **Adopt gRPC for High-Throughput & Production Workloads:** gRPC is strongly recommended for high-concurrency production deployments where low latency (specifically TTFT, up to **$43.59\%$ faster**) and maximum inference throughput (**$15.70\%$ to $24.02\%$ higher**) are required.
-* **Use REST for Internal Prototyping & Easy Integration:** REST API remains suitable for low-concurrency environments ($C \le 5$) or simple integration scenarios where HTTP/JSON standard tooling is preferred and performance differences are negligible ($\le 3.7\%$).
+| Concurrency | Protocol | Throughput (req/s) | Throughput Gain | Mean First Token (TTFT) *(Lower is Better)* | First Token Advantage | Mean Full Response (E2E) *(Lower is Better)* | Total Time Saved |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **1** | **gRPC** | **4.28** | +0.02 req/s *(+0.36%)* | **12.22 ms** | **0.35 ms faster** *(2.78%)* | **233.61 ms** | **0.83 ms faster** *(0.36%)* |
+|  | REST | 4.26 |  | 12.57 ms |  | 234.44 ms |  |
+| **5** | **gRPC** | **18.53** | +0.66 req/s *(+3.67%)* | **19.41 ms** | **8.17 ms faster** *(29.62%)* | **269.59 ms** | **9.79 ms faster** *(3.50%)* |
+|  | REST | 17.87 |  | 27.58 ms |  | 279.38 ms |  |
+| **10** | **gRPC** | **35.83** | +1.28 req/s *(+3.71%)* | **25.88 ms** | **8.79 ms faster** *(25.34%)* | **278.61 ms** | **10.21 ms faster** *(3.53%)* |
+|  | REST | 34.55 |  | 34.67 ms |  | 288.82 ms |  |
+| **25** | **gRPC** | **82.62** | +7.53 req/s *(+10.03%)* | **35.02 ms** | **24.33 ms faster** *(41.00%)* | **301.48 ms** | **29.46 ms faster** *(8.90%)* |
+|  | REST | 75.09 |  | 59.34 ms |  | 330.93 ms |  |
+| **50** | **gRPC** | **147.06** | +19.96 req/s *(+15.70%)* | **53.13 ms** | **41.06 ms faster** *(43.59%)* | **338.27 ms** | **51.14 ms faster** *(13.13%)* |
+|  | REST | 127.10 |  | 94.19 ms |  | 389.41 ms |  |
+
+---
+
+### Operational Recommendation
+
+* **Use gRPC for Production & Scaled Deployments:** Ideal for streaming services or multi-user applications where low initial response time (TTFT) and high throughput are essential under heavy concurrent traffic.
+* **Use REST for Rapid Prototyping & Simple Integrations:** Best suited for low-concurrency internal testing ($C \le 5$) where standard HTTP/JSON tooling provides developer convenience with no noticeable speed penalty.
