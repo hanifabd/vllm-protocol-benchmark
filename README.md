@@ -4,6 +4,28 @@ This benchmark evaluates the performance of **vLLM** using **gRPC** versus **RES
 
 ---
 
+## Server & Environment Specifications
+
+### Hardware
+* **CPU:** AMD Ryzen 9 7950X (16 Physical Cores / 32 Threads)[cite: 1]
+* **GPU:** 1x NVIDIA GeForce RTX 4090 (24 GB VRAM)[cite: 1]
+* **System Memory:** 124.91 GB RAM[cite: 1]
+
+### System & Driver Info
+* **Operating System:** Linux Ubuntu 22.04 LTS (Kernel 6.8.0-107-generic)[cite: 1]
+* **NVIDIA Driver:** 580.126.20[cite: 1]
+* **CUDA / Toolkit:** CUDA 13.0 (NVCC Toolkit 12.8)[cite: 1]
+* **Python Version:** 3.14.6[cite: 1]
+
+### Core Dependencies & Software
+* **vLLM:** 0.26.0[cite: 1]
+* **PyTorch:** 2.11.0+cu130[cite: 1]
+* **gRPC:** 1.83.0[cite: 1]
+* **aiohttp:** 3.14.3[cite: 1]
+* **smg_grpc_proto:** 0.4.14[cite: 1]
+
+---
+
 ### Key Takeaways
 
 1. **Overall Request Throughput & Latency are Comparable:**
