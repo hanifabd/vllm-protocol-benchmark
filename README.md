@@ -46,7 +46,7 @@ CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-0.5B-Instruct \
 > on separate GPUs) so one benchmark doesn't steal GPU time from the other
 > and skew results.
 
-## 4. Discover the gRPC schema, fill in the TODOs
+## 4. Discover the gRPC schema, fill in the TODOs `NO NEED TO RUN AGAIN, I HAVE ADJUST THE CODE AFTER RUNNING THIS CODE`
 
 ```bash
 python discover_grpc_schema.py
