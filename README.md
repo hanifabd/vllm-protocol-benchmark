@@ -1,113 +1,50 @@
-# vLLM REST vs gRPC Benchmark — Qwen2.5-0.5B-Instruct
+### Executive Summary: vLLM REST API vs. gRPC Benchmark Comparison
 
-## Why gRPC needs one extra step
+This benchmark evaluates the performance of **vLLM** using **gRPC** versus **REST API** protocols across increasing concurrency levels ($1, 5, 10, 25, 50$). Each test run executed $100$ total requests with a $100\%$ success rate.
 
-vLLM v0.26.0's gRPC server (`vllm serve --grpc`) is backed by proto
-definitions published *outside* the vLLM repo, in `smg-grpc-proto` /
-`smg-grpc-servicer`, which is still under active development. That means
-the exact RPC method name and message field names can differ between
-patch versions. Rather than hand you a client hardcoded against field
-names I can't verify against your exact installed version, `bench_grpc.py`
-has 3 clearly marked `TODO` blocks — `discover_grpc_schema.py` prints
-everything you need to fill them in, in about 2 minutes.
+---
 
-The REST script (`bench_rest.py`) is complete and needs no edits — vLLM's
-OpenAI-compatible `/v1/completions` endpoint is stable.
+### Key Takeaways
 
-## 1. Install
+1. **Overall Request Throughput & Latency are Comparable:**
+Both REST and gRPC perform very similarly across all tested concurrency levels. At the highest concurrency ($50$), gRPC achieves **$165.10\text{ req/s}$** compared to REST's **$160.51\text{ req/s}$** ($\sim 2.8\%$ throughput advantage for gRPC).
+2. **High-Concurrency Latency Edge for gRPC:**
+At higher concurrency levels ($25$ and $50$), gRPC demonstrates improved **Time to First Token (TTFT)** and lower overall **End-to-End (E2E) latency**:
+* **TTFT Mean at Concurrency 50:** gRPC is **$13.4\%$ faster** ($27.83\text{ ms}$ vs. $32.13\text{ ms}$).
+* **TTFT P99 at Concurrency 50:** gRPC is **$14.5\%$ faster** ($36.30\text{ ms}$ vs. $42.45\text{ ms}$).
+* **E2E Mean Latency at Concurrency 50:** gRPC is **$2.9\%$ faster** ($300.54\text{ ms}$ vs. $309.42\text{ ms}$).
 
-```bash
-python -m venv venv && source venv/bin/activate
 
-pip install "vllm==0.26.0"
-pip install aiohttp grpcio grpcio-tools smg-grpc-proto
-```
+3. **Inter-Token Latency (ITL):**
+Inter-Token Latency is nearly identical across protocols, scaling smoothly from $\sim 1.72\text{ ms} - 1.73\text{ ms}$ at concurrency 1 to $\sim 2.14\text{ ms} - 2.18\text{ ms}$ at concurrency 50, with gRPC holding a negligible $\sim 1-2\%$ efficiency edge.
+4. **Data Logging Anomalies in gRPC Run:**
+* **Missing TPOT:** Time Per Output Token (`tpot_mean_ms`, `tpot_p99_ms`) was not recorded (`NaN`) for gRPC.
+* **Token Throughput Discrepancy:** The `output_tok_throughput_s` column for gRPC mirrors its request throughput ($1:1$ ratio), whereas REST correctly reports token throughput scaling up to **$20,543.99\text{ tok/s}$** at concurrency 50. This indicates a metric collection artifact in the gRPC benchmarker rather than a hardware limitation.
 
-## 2. Start the REST server (GPU 0)
 
-```bash
-CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-0.5B-Instruct \
-    --host 0.0.0.0 --port 8000 \
-    --gpu-memory-utilization 0.85 \
-    --max-model-len 4096
-```
 
-## 3. Start the gRPC server (same or a second GPU)
+---
 
-```bash
-CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-0.5B-Instruct \
-    --grpc \
-    --host 0.0.0.0 --port 8010 \
-    --gpu-memory-utilization 0.85 \
-    --max-model-len 4096
-```
+### Performance Comparison Table
 
-> Run REST and gRPC as separate server processes (ideally sequentially, or
-> on separate GPUs) so one benchmark doesn't steal GPU time from the other
-> and skew results.
+| Concurrency | Protocol | Req Throughput (req/s) | Output Tok Throughput (tok/s) | TTFT Mean (ms) | TTFT P99 (ms) | ITL Mean (ms) | E2E Mean (ms) | E2E P99 (ms) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **1** | gRPC | **4.47** | 4.47* | **4.71** | **5.69** | **1.72** | **223.79** | **225.32** |
+|  | REST | 4.44 | 567.97 | 5.15 | 6.81 | 1.73 | 225.26 | 226.71 |
+| **5** | gRPC | **19.72** | 19.72* | 8.03 | 13.85 | **1.93** | **253.52** | 259.71 |
+|  | REST | 19.66 | 2,515.73 | **6.98** | **10.05** | 1.95 | 254.09 | **257.28** |
+| **10** | gRPC | 38.69 | 38.69* | 11.45 | 17.84 | **1.94** | 258.35 | 265.75 |
+|  | REST | **38.80** | 4,966.18 | **8.73** | **13.34** | 1.96 | **257.28** | **262.19** |
+| **25** | gRPC | **90.13** | 90.13* | **15.97** | **22.77** | **2.05** | **276.68** | **283.91** |
+|  | REST | 88.99 | 11,389.01 | 17.39 | 23.82 | 2.07 | 279.84 | 285.27 |
+| **50** | gRPC | **165.10** | 165.10* | **27.83** | **36.30** | **2.14** | **300.54** | **310.97** |
+|  | REST | 160.51 | 20,543.99 | 32.13 | 42.45 | 2.18 | 309.42 | 313.98 |
 
-## 4. Discover the gRPC schema, fill in the TODOs `NO NEED TO RUN AGAIN, I HAVE ADJUST THE CODE AFTER RUNNING THIS CODE`
+**Note: gRPC token throughput values reflect a benchmarking recording issue.*
 
-```bash
-python discover_grpc_schema.py
-```
+---
 
-This prints every service, RPC method, and message field defined in your
-installed `smg-grpc-proto`. Open `bench_grpc.py` and fix the 3 marked
-spots (request message construction, RPC method call, response chunk
-field access) to match.
+### Recommendation
 
-## 5. Run both benchmarks
-
-```bash
-# REST
-python bench_rest.py --base-url http://localhost:8000 \
-    --num-requests 100 \
-    --concurrency 1 5 10 25 50 \
-    --prompt-tokens 128 --max-tokens 128 \
-    --output results/rest_results.json
-
-# gRPC (after filling in the TODOs)
-python bench_grpc.py --target localhost:8010 \
-    --num-requests 100 \
-    --concurrency 1 5 10 25 50 \
-    --prompt-tokens 128 --max-tokens 128 \
-    --output results/grpc_results.json
-```
-
-Both scripts sweep the same concurrency levels against the same
-deterministically-generated prompts, so the two JSON result files are
-directly comparable.
-
-## 6. Compare
-
-```bash
-python compare_results.py \
-    --rest results/rest_results.json \
-    --grpc results/grpc_results.json \
-    --csv results/comparison.csv
-```
-
-Prints a side-by-side table and writes `results/comparison.csv` with, per
-concurrency level and protocol:
-
-- request throughput (req/s), output token throughput (tok/s)
-- TTFT mean / p99
-- TPOT mean / p99
-- ITL mean
-- end-to-end latency mean / p99
-- success/failure counts
-
-## What each metric tells you
-
-| Metric | What it isolates |
-|---|---|
-| TTFT | Time to first token — sensitive to serialization/connection overhead, most likely place to see REST vs gRPC differ |
-| TPOT / ITL | Decode-loop speed — should be ~identical between protocols; a gap here signals a client-side streaming/parsing bug, not a real protocol difference |
-| Throughput (req/s, tok/s) | Overall system capacity at a given concurrency |
-| p99 vs mean | Tail latency — where transport overhead compounds under load |
-
-Repeat the prompt-tokens/max-tokens sweep with short (e.g. 32/32) and long
-(e.g. 512/512) values — protocol overhead is most visible on short
-request/short response workloads, and gets swamped by GPU compute time on
-long ones.
+* **For High-Scale/High-Concurrency Workloads:** Choose **gRPC**. It offers superior network efficiency, lower TTFT overhead ($13-14\%$ faster under load), and higher request throughput capacity.
+* **For Simplicity & Integrations:** Choose **REST API**. The performance difference at low-to-medium concurrency ($1-10$) is negligible, and REST provides standard compatibility with standard client ecosystems.
