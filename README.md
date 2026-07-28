@@ -24,6 +24,9 @@ This benchmark evaluates the performance of **vLLM** using **gRPC** versus **RES
 * **aiohttp:** 3.14.3[cite: 1]
 * **smg_grpc_proto:** 0.4.14[cite: 1]
 
+## LLM Models
+* **Models:** Qwen/Qwen2.5-0.5B-Instruct
+
 ---
 
 ### Key Takeaways
