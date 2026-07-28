@@ -18,13 +18,13 @@ Start the server first (separate terminal):
 
     vllm serve Qwen/Qwen2.5-0.5B-Instruct \
         --grpc \
-        --host 0.0.0.0 --port 8001 \
+        --host 0.0.0.0 --port 8010 \
         --gpu-memory-utilization 0.85 \
         --max-model-len 4096
 
 Then run:
 
-    python bench_grpc.py --target localhost:8001 \
+    python bench_grpc.py --target localhost:8010 \
         --num-requests 100 --concurrency 10 --prompt-tokens 128 --max-tokens 128
 """
 from __future__ import annotations
@@ -90,12 +90,24 @@ async def send_one_request(
                 chunk = response.chunk
                 n_new_tokens = len(chunk.token_ids)
                 if n_new_tokens:
-                    for _ in range(n_new_tokens):
-                        if first_token_time is None:
-                            first_token_time = now
-                        else:
-                            result.inter_token_latencies_s.append(now - last_token_time)
-                        last_token_time = now
+                    if first_token_time is None:
+                        # First chunk ever: we only have one timestamp (`now`)
+                        # for however many tokens arrived together, so there's
+                        # no measurable gap *within* this batch -- record the
+                        # arrival time and leave inter-token gaps for later
+                        # chunks, same as bench_rest.py's first-SSE-event case.
+                        first_token_time = now
+                    else:
+                        # REST measures one real timestamp per token because
+                        # each SSE event is one token. gRPC can batch several
+                        # token_ids into a single message, so instead of
+                        # stamping every token in the batch with the same
+                        # `now` (which would fabricate near-zero ITLs and
+                        # skew gRPC's stats favorably vs. REST), spread the
+                        # elapsed time evenly across the batch.
+                        gap = (now - last_token_time) / n_new_tokens
+                        result.inter_token_latencies_s.extend([gap] * n_new_tokens)
+                    last_token_time = now
                     output_tokens += n_new_tokens
 
                 if chunk.prompt_tokens:
@@ -163,7 +175,7 @@ async def run_benchmark(
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--target", default="localhost:8001", help="host:port of the gRPC server")
+    ap.add_argument("--target", default="localhost:8010", help="host:port of the gRPC server")
     ap.add_argument("--model", default=MODEL_NAME)
     ap.add_argument("--num-requests", type=int, default=100)
     ap.add_argument("--concurrency", type=int, nargs="+", default=[1, 5, 10, 25, 50])
